@@ -208,7 +208,6 @@ async def start_duel(uid1, uid2, context, db, is_ranked=True, group_chat_id=None
     context.bot_data[duel_id] = duel_data
 
     await show_round(duel_id, context)
-    # Start the first timeout task and store it
     duel_data["timeout_task"] = asyncio.create_task(round_timeout_task(duel_id, context))
 
 async def show_round(duel_id, context):
@@ -261,7 +260,7 @@ async def show_round(duel_id, context):
                 except:
                     pass
 
-    # Cancel any existing timeout task before starting a new one
+    # Cancel old timeout, start new one
     if duel.get("timeout_task"):
         duel["timeout_task"].cancel()
     duel["start_time"] = time.monotonic()
@@ -274,7 +273,7 @@ async def round_timeout_task(duel_id, context):
         duel = context.bot_data.get(duel_id)
         if not duel or duel["processed"]:
             return
-        # Force-miss answers for anyone who hasn't answered
+        # Force-miss
         for uid in duel["players"]:
             if len(duel["answers"][uid]) <= duel["current_round"]:
                 duel["answers"][uid].append((False, 10.0))
@@ -291,8 +290,6 @@ async def duel_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not data.startswith("duel_"):
         return
 
-    # Parse callback: everything after "duel_" is <duel_id>_<chosen_idx>
-    # The last underscore separates the index
     try:
         prefix, chosen_str = data.rsplit("_", 1)
     except ValueError:
@@ -300,7 +297,7 @@ async def duel_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not prefix.startswith("duel_"):
         return
-    duel_id = prefix[5:]   # remove "duel_"
+    duel_id = prefix[5:]
 
     if not any(ch.isdigit() for ch in duel_id):
         return
@@ -329,7 +326,6 @@ async def duel_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     duel["answers"][user.id].append((correct, elapsed))
     await query.answer("Answer recorded!")
 
-    # If both players answered, cancel timeout and process immediately
     if (len(duel["answers"][duel["players"][0]]) > round_idx and
         len(duel["answers"][duel["players"][1]]) > round_idx):
         if not duel["processed"]:
@@ -343,19 +339,60 @@ async def process_duel_round(duel_id, context):
     if not duel:
         return
 
+    round_idx = duel["current_round"]
+    puzzle = duel["puzzles"][round_idx]
+    p1, p2 = duel["players"]
+    a1 = duel["answers"][p1][round_idx][0]  # True/False
+    a2 = duel["answers"][p2][round_idx][0]
+
+    intruder_text = puzzle["options"][puzzle["intruder_index"]]
+
+    # Build feedback text
+    if duel["group_chat_id"]:
+        # Group duel – show both results
+        feedback = (
+            f"⚔️ Round {round_idx+1} results:\n"
+            f"✅ {duel['names'][p1]} was {'correct' if a1 else 'wrong'}\n"
+            f"✅ {duel['names'][p2]} was {'correct' if a2 else 'wrong'}\n"
+            f"Intruder: {intruder_text}"
+        )
+    else:
+        # Private duel – each sees their own result
+        feedback_p1 = (
+            f"⚔️ Round {round_idx+1} result:\n"
+            f"{'✅ Correct!' if a1 else '❌ Wrong!'}\n"
+            f"Intruder: {intruder_text}"
+        )
+        feedback_p2 = (
+            f"⚔️ Round {round_idx+1} result:\n"
+            f"{'✅ Correct!' if a2 else '❌ Wrong!'}\n"
+            f"Intruder: {intruder_text}"
+        )
+
+    # Show feedback for 2 seconds, then advance
+    if duel["group_chat_id"] and "group" in duel["message_ids"]:
+        chat_id, msg_id = duel["message_ids"]["group"]
+        try:
+            await context.bot.edit_message_text(chat_id=chat_id, message_id=msg_id, text=feedback, parse_mode="Markdown")
+        except:
+            pass
+    else:
+        for uid, fb in [(p1, feedback_p1), (p2, feedback_p2)]:
+            if uid in duel["message_ids"]:
+                chat_id, msg_id = duel["message_ids"][uid]
+                try:
+                    await context.bot.edit_message_text(chat_id=chat_id, message_id=msg_id, text=fb, parse_mode="Markdown")
+                except:
+                    pass
+
+    await asyncio.sleep(2)  # Let players read the result
+
     duel["current_round"] += 1
     if duel["current_round"] < len(duel["puzzles"]):
         await show_round(duel_id, context)
-        # show_round already starts a new timeout task
     else:
         await finish_duel(duel_id, context)
 
-async def handle_duel_forfeit(duel_id, uid, context):
-    duel = context.bot_data.get(duel_id)
-    if not duel:
-        return
-    winner = duel["players"][0] if duel["players"][1] == uid else duel["players"][1]
-    await finish_duel(duel_id, context, forfeit_winner=winner)
 
 async def finish_duel(duel_id, context, forfeit_winner=None):
     duel = context.bot_data.pop(duel_id, None)
