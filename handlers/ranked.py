@@ -163,7 +163,6 @@ async def duel_accept_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         await query.edit_message_text("Challenge expired.")
         return
 
-    # Ensure the accepting user exists in DB
     await create_user_if_not_exists(user.id, user.username, user.first_name, db)
 
     group_chat_id = challenge["group_chat_id"]
@@ -172,13 +171,11 @@ async def duel_accept_callback(update: Update, context: ContextTypes.DEFAULT_TYP
 
 # ---------- Core Duel Engine ----------
 async def start_duel(uid1, uid2, context, db, is_ranked=True, group_chat_id=None):
-    # Ensure both exist in DB
     for uid in (uid1, uid2):
         user = await db.fetchone("SELECT user_id FROM users WHERE user_id = ?", uid)
         if not user:
             await create_user_if_not_exists(uid, None, f"Player{str(uid)[-4:]}", db)
 
-    # Fetch names
     def get_display_name(row, uid):
         if row:
             name = row["first_name"] or row["username"]
@@ -205,12 +202,14 @@ async def start_duel(uid1, uid2, context, db, is_ranked=True, group_chat_id=None
         "group_chat_id": group_chat_id,
         "round_timeout": 10,
         "processed": False,
-        "db": db
+        "db": db,
+        "timeout_task": None
     }
     context.bot_data[duel_id] = duel_data
 
     await show_round(duel_id, context)
-    asyncio.create_task(round_timeout_task(duel_id, context))
+    # Start the first timeout task and store it
+    duel_data["timeout_task"] = asyncio.create_task(round_timeout_task(duel_id, context))
 
 async def show_round(duel_id, context):
     duel = context.bot_data.get(duel_id)
@@ -224,7 +223,6 @@ async def show_round(duel_id, context):
     ])
     text = f"⚔️ {'Ranked' if duel['is_ranked'] else 'Casual'} Duel – Round {round_idx+1}/5\n\n" + "\n".join(puzzle["options"])
 
-    # Send/update message(s)
     if duel["group_chat_id"]:
         if "group" in duel["message_ids"]:
             chat_id, msg_id = duel["message_ids"]["group"]
@@ -263,34 +261,52 @@ async def show_round(duel_id, context):
                 except:
                     pass
 
+    # Cancel any existing timeout task before starting a new one
+    if duel.get("timeout_task"):
+        duel["timeout_task"].cancel()
     duel["start_time"] = time.monotonic()
     duel["processed"] = False
+    duel["timeout_task"] = asyncio.create_task(round_timeout_task(duel_id, context))
 
 async def round_timeout_task(duel_id, context):
-    await asyncio.sleep(10)
-    duel = context.bot_data.get(duel_id)
-    if not duel or duel["processed"]:
-        return
-    # Force-miss answers for anyone who hasn't answered
-    for uid in duel["players"]:
-        if len(duel["answers"][uid]) <= duel["current_round"]:
-            duel["answers"][uid].append((False, 10.0))
-    duel["processed"] = True
-    await process_duel_round(duel_id, context)
+    try:
+        await asyncio.sleep(10)
+        duel = context.bot_data.get(duel_id)
+        if not duel or duel["processed"]:
+            return
+        # Force-miss answers for anyone who hasn't answered
+        for uid in duel["players"]:
+            if len(duel["answers"][uid]) <= duel["current_round"]:
+                duel["answers"][uid].append((False, 10.0))
+        duel["processed"] = True
+        await process_duel_round(duel_id, context)
+    except asyncio.CancelledError:
+        pass
 
 async def duel_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user = query.from_user
-    data = query.data.split("_")
-    # Only accept exactly 3 parts: duel, duel_id, index
-    if len(data) != 3 or data[0] != "duel":
+    data = query.data
+
+    if not data.startswith("duel_"):
         return
-    duel_id = data[1]
-    # Reject if duel_id doesn't contain any digits (e.g., "accept" etc.)
+
+    # Parse callback: everything after "duel_" is <duel_id>_<chosen_idx>
+    # The last underscore separates the index
+    try:
+        prefix, chosen_str = data.rsplit("_", 1)
+    except ValueError:
+        return
+
+    if not prefix.startswith("duel_"):
+        return
+    duel_id = prefix[5:]   # remove "duel_"
+
     if not any(ch.isdigit() for ch in duel_id):
         return
+
     try:
-        chosen_idx = int(data[2])
+        chosen_idx = int(chosen_str)
     except ValueError:
         await query.answer("Invalid option.", show_alert=True)
         return
@@ -313,11 +329,13 @@ async def duel_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     duel["answers"][user.id].append((correct, elapsed))
     await query.answer("Answer recorded!")
 
-    # If both players have now answered, process immediately
+    # If both players answered, cancel timeout and process immediately
     if (len(duel["answers"][duel["players"][0]]) > round_idx and
         len(duel["answers"][duel["players"][1]]) > round_idx):
         if not duel["processed"]:
             duel["processed"] = True
+            if duel.get("timeout_task"):
+                duel["timeout_task"].cancel()
             await process_duel_round(duel_id, context)
 
 async def process_duel_round(duel_id, context):
@@ -328,7 +346,7 @@ async def process_duel_round(duel_id, context):
     duel["current_round"] += 1
     if duel["current_round"] < len(duel["puzzles"]):
         await show_round(duel_id, context)
-        asyncio.create_task(round_timeout_task(duel_id, context))
+        # show_round already starts a new timeout task
     else:
         await finish_duel(duel_id, context)
 
@@ -360,7 +378,6 @@ async def finish_duel(duel_id, context, forfeit_winner=None):
         elif p2_correct > p1_correct:
             winner_id, loser_id = p2, p1
         else:
-            # tie – higher MMR wins
             w_mmr = await db.fetchone("SELECT mmr FROM users WHERE user_id = ?", p1)
             l_mmr = await db.fetchone("SELECT mmr FROM users WHERE user_id = ?", p2)
             if w_mmr and l_mmr:
@@ -374,7 +391,6 @@ async def finish_duel(duel_id, context, forfeit_winner=None):
     winner_name = duel["names"][winner_id]
     loser_name = duel["names"][loser_id]
 
-    # XP awards
     await award_xp(winner_id, 100, db, combo=1)
     await award_xp(loser_id, 30, db, combo=1)
 
@@ -393,7 +409,6 @@ async def finish_duel(duel_id, context, forfeit_winner=None):
             if new_rank:
                 rank_msg = f"\n🎉 Congratulations! You've reached **{new_rank.capitalize()}** rank!"
 
-    # Build result
     result = (
         f"🏆 Duel finished!\n\n"
         f"{name1}: {p1_correct}/5 correct\n"
@@ -403,7 +418,6 @@ async def finish_duel(duel_id, context, forfeit_winner=None):
     if duel.get("is_ranked"):
         result += f"MMR change: +{delta} ({winner_name}), -{delta} ({loser_name})"
 
-    # Send result
     if duel["group_chat_id"] and "group" in duel["message_ids"]:
         chat_id, msg_id = duel["message_ids"]["group"]
         try:
