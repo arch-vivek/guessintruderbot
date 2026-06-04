@@ -87,13 +87,11 @@ async def duel_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     target_username = None
     target_first_name = None
 
-    # Option 1: reply to a user -> always works, no need for DB
     if update.message.reply_to_message:
         target_user = update.message.reply_to_message.from_user
         target_id = target_user.id
         target_username = target_user.username
         target_first_name = target_user.first_name
-    # Option 2: /duel @username -> requires DB lookup
     elif context.args:
         username = context.args[0].lstrip("@").lower()
         row = await db.fetchone("SELECT user_id, username, first_name FROM users WHERE LOWER(username) = ?", username)
@@ -115,7 +113,6 @@ async def duel_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("You can't duel yourself.")
         return
 
-    # Ensure target exists in DB (if they've never started, create a basic entry)
     await create_user_if_not_exists(target_id, target_username, target_first_name, db)
 
     pending_key = f"duel_challenge_{challenger.id}_{target_id}"
@@ -175,15 +172,23 @@ async def duel_accept_callback(update: Update, context: ContextTypes.DEFAULT_TYP
 
 # ---------- Core Duel Engine (in‑place rounds) ----------
 async def start_duel(uid1, uid2, context, db, is_ranked=True, group_chat_id=None):
+    # Ensure both players exist
     for uid in (uid1, uid2):
         user = await db.fetchone("SELECT user_id FROM users WHERE user_id = ?", uid)
         if not user:
             await create_user_if_not_exists(uid, None, f"User{uid}", db)
 
+    # Fetch names for result display
+    u1 = await db.fetchone("SELECT first_name, username FROM users WHERE user_id = ?", uid1)
+    u2 = await db.fetchone("SELECT first_name, username FROM users WHERE user_id = ?", uid2)
+    name1 = u1["first_name"] or u1["username"] or str(uid1)
+    name2 = u2["first_name"] or u2["username"] or str(uid2)
+
     puzzles = [generate_puzzle(2) for _ in range(5)]
     duel_id = f"{uid1}_{uid2}_{int(time.time())}"
     duel_data = {
         "players": [uid1, uid2],
+        "names": {uid1: name1, uid2: name2},          # store names
         "puzzles": puzzles,
         "current_round": 0,
         "answers": {uid1: [], uid2: []},
@@ -258,6 +263,7 @@ async def round_timeout_task(duel_id, context):
     duel = context.bot_data.get(duel_id)
     if not duel or duel["processed"]:
         return
+    # Force missing answers
     for uid in duel["players"]:
         if len(duel["answers"][uid]) <= duel["current_round"]:
             duel["answers"][uid].append((False, 10.0))
@@ -319,6 +325,8 @@ async def finish_duel(duel_id, context, forfeit_winner=None):
         return
     db = duel.get("db") or context.bot_data["db"]
     p1, p2 = duel["players"]
+    name1 = duel["names"][p1]
+    name2 = duel["names"][p2]
 
     p1_correct = sum(1 for a in duel["answers"][p1] if a[0])
     p2_correct = sum(1 for a in duel["answers"][p2] if a[0])
@@ -332,6 +340,7 @@ async def finish_duel(duel_id, context, forfeit_winner=None):
         elif p2_correct > p1_correct:
             winner_id, loser_id = p2, p1
         else:
+            # tie – higher MMR wins (or p1 if not ranked)
             w_mmr = await db.fetchone("SELECT mmr FROM users WHERE user_id = ?", p1)
             l_mmr = await db.fetchone("SELECT mmr FROM users WHERE user_id = ?", p2)
             if w_mmr and l_mmr:
@@ -342,6 +351,10 @@ async def finish_duel(duel_id, context, forfeit_winner=None):
             else:
                 winner_id, loser_id = p1, p2
 
+    winner_name = duel["names"][winner_id]
+    loser_name = duel["names"][loser_id]
+
+    # XP awards
     await award_xp(winner_id, 100, db, combo=1)
     await award_xp(loser_id, 30, db, combo=1)
 
@@ -360,15 +373,17 @@ async def finish_duel(duel_id, context, forfeit_winner=None):
             if new_rank:
                 rank_msg = f"\n🎉 Congratulations! You've reached **{new_rank.capitalize()}** rank!"
 
+    # Build result text with names
     result = (
         f"🏆 Duel finished!\n\n"
-        f"Player 1: {p1} – {p1_correct} correct\n"
-        f"Player 2: {p2} – {p2_correct} correct\n\n"
-        f"Winner: {winner_id}\n"
+        f"{name1}: {p1_correct}/5 correct\n"
+        f"{name2}: {p2_correct}/5 correct\n\n"
+        f"Winner: **{winner_name}**\n"
     )
     if duel.get("is_ranked"):
-        result += f"MMR change: +{delta} (winner), -{delta} (loser)"
+        result += f"MMR change: +{delta} ({winner_name}), -{delta} ({loser_name})"
 
+    # Send result
     if duel["group_chat_id"] and "group" in duel["message_ids"]:
         chat_id, msg_id = duel["message_ids"]["group"]
         try:
