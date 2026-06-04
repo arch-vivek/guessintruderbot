@@ -179,10 +179,19 @@ async def start_duel(uid1, uid2, context, db, is_ranked=True, group_chat_id=None
             await create_user_if_not_exists(uid, None, f"User{uid}", db)
 
     # Fetch names for result display
+    # Fetch names for result display – use a friendly fallback
     u1 = await db.fetchone("SELECT first_name, username FROM users WHERE user_id = ?", uid1)
     u2 = await db.fetchone("SELECT first_name, username FROM users WHERE user_id = ?", uid2)
-    name1 = u1["first_name"] or u1["username"] or str(uid1)
-    name2 = u2["first_name"] or u2["username"] or str(uid2)
+
+    def display_name(row, uid):
+        if row:
+            name = row["first_name"] or row["username"]
+            if name:
+                return name
+        return f"Player{str(uid)[-4:]}"
+
+    name1 = display_name(u1, uid1)
+    name2 = display_name(u2, uid2)
 
     puzzles = [generate_puzzle(2) for _ in range(5)]
     duel_id = f"{uid1}_{uid2}_{int(time.time())}"
