@@ -283,10 +283,16 @@ async def duel_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user = query.from_user
     data = query.data.split("_")
+
+    # Only accept exactly 3 parts: duel, duel_id, index
     if len(data) != 3 or data[0] != "duel":
         return
 
     duel_id = data[1]
+    # duel_id must contain at least one digit (otherwise it's the accept button's data)
+    if not any(ch.isdigit() for ch in duel_id):
+        return
+
     try:
         chosen_idx = int(data[2])
     except ValueError:
@@ -311,7 +317,9 @@ async def duel_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     duel["answers"][user.id].append((correct, elapsed))
     await query.answer("Answer recorded!")
 
-    if len(duel["answers"][duel["players"][0]]) > round_idx and len(duel["answers"][duel["players"][1]]) > round_idx:
+    # Immediately process if both players answered
+    if (len(duel["answers"][duel["players"][0]]) > round_idx and 
+        len(duel["answers"][duel["players"][1]]) > round_idx):
         if not duel["processed"]:
             duel["processed"] = True
             await process_duel_round(duel_id, context)

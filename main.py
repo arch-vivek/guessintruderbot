@@ -115,7 +115,6 @@ def main():
     app.add_handler(CallbackQueryHandler(gb_answer_callback, pattern="^gb_answer_"))
     # Accept duel buttons MUST come before general duel handler
     app.add_handler(CallbackQueryHandler(duel_accept_callback, pattern="^duel_accept_"))
-    # General duel answer callback – now only matches duel_<digits>...
     app.add_handler(CallbackQueryHandler(duel_answer, pattern="^duel_[0-9]"))
     app.add_handler(CallbackQueryHandler(daily_answer, pattern="^daily_answer_"))
     app.add_handler(CallbackQueryHandler(endless_answer, pattern="^endless_"))
