@@ -163,41 +163,39 @@ async def duel_accept_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         await query.edit_message_text("Challenge expired.")
         return
 
-    # The user who clicked accept might be brand new – ensure they exist in DB
+    # Ensure the accepting user exists in DB
     await create_user_if_not_exists(user.id, user.username, user.first_name, db)
 
     group_chat_id = challenge["group_chat_id"]
     await query.edit_message_text("⚔️ Duel accepted! Prepare...")
     await start_duel(challenger_id, target_id, context, db, is_ranked=False, group_chat_id=group_chat_id)
 
-# ---------- Core Duel Engine (in‑place rounds) ----------
+# ---------- Core Duel Engine ----------
 async def start_duel(uid1, uid2, context, db, is_ranked=True, group_chat_id=None):
-    # Ensure both players exist
+    # Ensure both exist in DB
     for uid in (uid1, uid2):
         user = await db.fetchone("SELECT user_id FROM users WHERE user_id = ?", uid)
         if not user:
-            await create_user_if_not_exists(uid, None, f"User{uid}", db)
+            await create_user_if_not_exists(uid, None, f"Player{str(uid)[-4:]}", db)
 
-    # Fetch names for result display
-    # Fetch names for result display – use a friendly fallback
-    u1 = await db.fetchone("SELECT first_name, username FROM users WHERE user_id = ?", uid1)
-    u2 = await db.fetchone("SELECT first_name, username FROM users WHERE user_id = ?", uid2)
-
-    def display_name(row, uid):
+    # Fetch names
+    def get_display_name(row, uid):
         if row:
             name = row["first_name"] or row["username"]
             if name:
                 return name
         return f"Player{str(uid)[-4:]}"
 
-    name1 = display_name(u1, uid1)
-    name2 = display_name(u2, uid2)
+    u1 = await db.fetchone("SELECT first_name, username FROM users WHERE user_id = ?", uid1)
+    u2 = await db.fetchone("SELECT first_name, username FROM users WHERE user_id = ?", uid2)
+    name1 = get_display_name(u1, uid1)
+    name2 = get_display_name(u2, uid2)
 
     puzzles = [generate_puzzle(2) for _ in range(5)]
     duel_id = f"{uid1}_{uid2}_{int(time.time())}"
     duel_data = {
         "players": [uid1, uid2],
-        "names": {uid1: name1, uid2: name2},          # store names
+        "names": {uid1: name1, uid2: name2},
         "puzzles": puzzles,
         "current_round": 0,
         "answers": {uid1: [], uid2: []},
@@ -226,6 +224,7 @@ async def show_round(duel_id, context):
     ])
     text = f"⚔️ {'Ranked' if duel['is_ranked'] else 'Casual'} Duel – Round {round_idx+1}/5\n\n" + "\n".join(puzzle["options"])
 
+    # Send/update message(s)
     if duel["group_chat_id"]:
         if "group" in duel["message_ids"]:
             chat_id, msg_id = duel["message_ids"]["group"]
@@ -272,7 +271,7 @@ async def round_timeout_task(duel_id, context):
     duel = context.bot_data.get(duel_id)
     if not duel or duel["processed"]:
         return
-    # Force missing answers
+    # Force-miss answers for anyone who hasn't answered
     for uid in duel["players"]:
         if len(duel["answers"][uid]) <= duel["current_round"]:
             duel["answers"][uid].append((False, 10.0))
@@ -283,16 +282,13 @@ async def duel_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user = query.from_user
     data = query.data.split("_")
-
     # Only accept exactly 3 parts: duel, duel_id, index
     if len(data) != 3 or data[0] != "duel":
         return
-
     duel_id = data[1]
-    # duel_id must contain at least one digit (otherwise it's the accept button's data)
+    # Reject if duel_id doesn't contain any digits (e.g., "accept" etc.)
     if not any(ch.isdigit() for ch in duel_id):
         return
-
     try:
         chosen_idx = int(data[2])
     except ValueError:
@@ -317,8 +313,8 @@ async def duel_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     duel["answers"][user.id].append((correct, elapsed))
     await query.answer("Answer recorded!")
 
-    # Immediately process if both players answered
-    if (len(duel["answers"][duel["players"][0]]) > round_idx and 
+    # If both players have now answered, process immediately
+    if (len(duel["answers"][duel["players"][0]]) > round_idx and
         len(duel["answers"][duel["players"][1]]) > round_idx):
         if not duel["processed"]:
             duel["processed"] = True
@@ -335,6 +331,13 @@ async def process_duel_round(duel_id, context):
         asyncio.create_task(round_timeout_task(duel_id, context))
     else:
         await finish_duel(duel_id, context)
+
+async def handle_duel_forfeit(duel_id, uid, context):
+    duel = context.bot_data.get(duel_id)
+    if not duel:
+        return
+    winner = duel["players"][0] if duel["players"][1] == uid else duel["players"][1]
+    await finish_duel(duel_id, context, forfeit_winner=winner)
 
 async def finish_duel(duel_id, context, forfeit_winner=None):
     duel = context.bot_data.pop(duel_id, None)
@@ -357,7 +360,7 @@ async def finish_duel(duel_id, context, forfeit_winner=None):
         elif p2_correct > p1_correct:
             winner_id, loser_id = p2, p1
         else:
-            # tie – higher MMR wins (or p1 if not ranked)
+            # tie – higher MMR wins
             w_mmr = await db.fetchone("SELECT mmr FROM users WHERE user_id = ?", p1)
             l_mmr = await db.fetchone("SELECT mmr FROM users WHERE user_id = ?", p2)
             if w_mmr and l_mmr:
@@ -390,7 +393,7 @@ async def finish_duel(duel_id, context, forfeit_winner=None):
             if new_rank:
                 rank_msg = f"\n🎉 Congratulations! You've reached **{new_rank.capitalize()}** rank!"
 
-    # Build result text with names
+    # Build result
     result = (
         f"🏆 Duel finished!\n\n"
         f"{name1}: {p1_correct}/5 correct\n"
