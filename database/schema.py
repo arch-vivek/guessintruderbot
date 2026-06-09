@@ -54,8 +54,20 @@ CREATE TABLE IF NOT EXISTS seasons (
     active INTEGER DEFAULT 0
 );
 
+CREATE TABLE friendships (
+    user_id INTEGER NOT NULL,
+    friend_id INTEGER NOT NULL,
+    status TEXT DEFAULT 'pending',  -- pending, accepted, blocked
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (user_id, friend_id),
+    FOREIGN KEY (user_id) REFERENCES users(user_id),
+    FOREIGN KEY (friend_id) REFERENCES users(user_id)
+);
+
 CREATE INDEX IF NOT EXISTS idx_users_mmr ON users(mmr DESC);
 CREATE INDEX IF NOT EXISTS idx_matches_created ON matches(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_friendships_user_id ON friendships(user_id);
+CREATE INDEX IF NOT EXISTS idx_friendships_friend_id ON friendships(friend_id);
 """
 
 SEED_SEASON = """

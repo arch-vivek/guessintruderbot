@@ -5,6 +5,9 @@ from telegram.ext import ContextTypes
 from core.game_engine import generate_puzzle
 from services.xp_progression import award_xp
 from utils.helpers import smart_reply
+from utils.rate_limiter import RateLimiter
+
+daily_limiter = RateLimiter(max_calls=1, period=60)  # once per minute max
 
 async def get_today_challenge(db):
     today_str = str(date.today())
@@ -18,9 +21,13 @@ async def get_today_challenge(db):
 async def start_daily(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     db = context.bot_data["db"]
-    today_str = str(date.today())
 
-    # Persistent daily limit
+    # Rate limit check (extra safety)
+    if not await daily_limiter.is_allowed(user.id):
+        await smart_reply(update, context, "⏳ Please wait before attempting the daily challenge again.")
+        return
+
+    today_str = str(date.today())
     user_data = await db.fetchone("SELECT last_daily FROM users WHERE user_id = ?", user.id)
     if user_data and user_data["last_daily"] == today_str:
         await smart_reply(update, context, "You already attempted today's challenge! Come back tomorrow.")
@@ -66,6 +73,5 @@ async def daily_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("✅ Correct! +150 XP\nYou completed the daily challenge!")
     else:
         await query.edit_message_text(f"❌ Wrong! The intruder was {puzzle['options'][puzzle['intruder_index']]}")
-    # Mark daily as attempted for this user
     await db.execute("UPDATE users SET last_daily = ? WHERE user_id = ?", str(date.today()), user.id)
     context.user_data.pop("daily_game", None)

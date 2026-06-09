@@ -26,9 +26,10 @@ async def start_quick_play(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     async with active_games_lock:
-        if user.id in active_games:
-            await query.answer("You already have an active game.")
-            return
+        # If there's an existing game for this user, cancel its timeout task and remove it
+        old_game = active_games.pop(user.id, None)
+        if old_game and "timeout_task" in old_game:
+            old_game["timeout_task"].cancel()
 
     difficulty = await get_player_difficulty(user.id, db)
     puzzle = generate_puzzle(difficulty)
@@ -47,12 +48,16 @@ async def start_quick_play(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "chat_id": chat_id,
         "difficulty": difficulty,
         "start_time": time.monotonic(),
-        "user_id": user.id
+        "user_id": user.id,
+        "timeout_task": None
     }
+
+    # Create the timeout task and store it
+    timeout_task = asyncio.create_task(auto_timeout(user.id, context, game_state))
+    game_state["timeout_task"] = timeout_task
+
     async with active_games_lock:
         active_games[user.id] = game_state
-
-    asyncio.create_task(auto_timeout(user.id, context))
 
 async def handle_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -65,6 +70,10 @@ async def handle_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not game:
         await query.answer("No active game.", show_alert=True)
         return
+
+    # Cancel the timeout task immediately
+    if game.get("timeout_task"):
+        game["timeout_task"].cancel()
 
     if query.data == "qp_quit":
         await query.edit_message_text("Game cancelled.")
@@ -104,7 +113,6 @@ async def handle_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if elapsed < 2:
             await check_achievement(user.id, "perfect_round", db)
 
-        # Emoji celebration sequence
         try:
             await query.edit_message_text("✅")
             await asyncio.sleep(0.3)
@@ -127,7 +135,6 @@ async def handle_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         await query.edit_message_text(text, parse_mode="Markdown")
 
-        # Combo popup for streak milestones
         if new_streak > 0 and new_streak % 5 == 0:
             bonus_xp = 50
             await award_xp(user.id, bonus_xp, db, combo=1)
@@ -139,14 +146,26 @@ async def handle_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text = f"❌ *WRONG!*\n\nThe intruder was: {puzzle['options'][puzzle['intruder_index']]}\n"
         await query.edit_message_text(text, parse_mode="Markdown")
 
-async def auto_timeout(user_id, context):
-    await asyncio.sleep(10)
-    async with active_games_lock:
-        game = active_games.pop(user_id, None)
-    if game:
+async def auto_timeout(user_id: int, context: ContextTypes.DEFAULT_TYPE, game_state: dict):
+    """Task that expires the game after 10 seconds, if not already answered."""
+    try:
+        await asyncio.sleep(10)
+        # After sleeping, check if this game is still the active one (not already popped)
+        async with active_games_lock:
+            current_game = active_games.get(user_id)
+            if current_game is game_state:   # same object, meaning it wasn't replaced
+                active_games.pop(user_id, None)
+            else:
+                return  # Game already handled, nothing to do
+        # Edit the message to show timeout
         try:
             await context.bot.edit_message_text(
-                chat_id=game["chat_id"], message_id=game["message_id"],
-                text="⌛ Time's up! Game expired.")
+                chat_id=game_state["chat_id"],
+                message_id=game_state["message_id"],
+                text="⌛ Time's up! Game expired."
+            )
         except:
             pass
+    except asyncio.CancelledError:
+        # Task was cancelled because the player answered – that's fine
+        pass

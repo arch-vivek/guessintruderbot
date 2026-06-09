@@ -1,21 +1,30 @@
-import time, uuid, logging
+import time, uuid, random, asyncio
 from telegram import Update, InlineQueryResultArticle, InputTextMessageContent, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import ContextTypes
 from core.game_engine import generate_puzzle
 from services.xp_progression import award_xp
 
 async def inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    results = []
-    puzzle = generate_puzzle(difficulty=1)
+    # Try to get a puzzle from the pre‑warmed pool
+    pool = context.bot_data.get("inline_pool", [])
+    if pool:
+        puzzle = pool.pop(0)   # take the first one
+    else:
+        puzzle = generate_puzzle(difficulty=random.randint(1,2))
+        # in background, ask the warm‑up task to refill (already running in main)
+
     puzzle_id = uuid.uuid4().hex[:8]
     context.bot_data.setdefault("inline_puzzles", {})[puzzle_id] = {
         "puzzle": puzzle,
         "expires": time.time() + 600,
         "answered_users": set()
     }
+
     keyboard = InlineKeyboardMarkup([
         [InlineKeyboardButton(opt, callback_data=f"inline_answer_{puzzle_id}_{i}")] for i, opt in enumerate(puzzle["options"])
     ])
+
+    results = []
     results.append(
         InlineQueryResultArticle(
             id=puzzle_id,

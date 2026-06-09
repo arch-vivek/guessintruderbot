@@ -3,6 +3,7 @@ from PIL import Image, ImageDraw, ImageFont
 from telegram import Update
 from telegram.ext import ContextTypes
 from services.xp_progression import get_user, xp_for_level
+from utils.helpers import smart_reply
 
 FONT_PATH_BOLD = "assets/fonts/PlayfairDisplay-Bold.ttf"
 FONT_PATH_REGULAR = "assets/fonts/PlayfairDisplay-Regular.ttf"
@@ -12,10 +13,10 @@ async def profile_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     db = context.bot_data["db"]
     profile = await get_user(user.id, db)
     if not profile:
-        await update.message.reply_text("Profile not found. Use /start first.")
+        await smart_reply(update, context, "Profile not found. Use /start first.")
         return
 
-    # No equipped items – pass empty set
+    # No equipped items – use empty set
     equipped_set = set()
 
     # Fetch user's profile photo
@@ -28,12 +29,23 @@ async def profile_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await file.download_to_memory(bio)
         photo_bytes = bio.getvalue()
 
+    # Generate the card image
     card_img = generate_profile_card(profile, photo_bytes, equipped_set)
 
+    # Save to BytesIO
     card_bio = io.BytesIO()
     card_img.save(card_bio, "PNG")
     card_bio.seek(0)
-    await update.message.reply_photo(photo=card_bio, caption="Your Profile")
+
+    # Send as photo – handle both callback and direct message
+    if update.callback_query:
+        await update.callback_query.message.reply_photo(photo=card_bio, caption="Your Profile")
+        try:
+            await update.callback_query.answer()
+        except:
+            pass
+    else:
+        await update.message.reply_photo(photo=card_bio, caption="Your Profile")
 
 def generate_profile_card(user_data: dict, profile_photo_bytes: bytes | None, equipped_set: set) -> Image.Image:
     # Canvas 800x400 – warm cream background

@@ -1,17 +1,20 @@
 start - Main menu & game modes
-help - How to play
-profile - Your profile card
-balance - Check your coins and gems
-leaderboard - Top players
-battle - Start a group battle
-join - Join a pending group battle
-ranked - Queue for a ranked duel
-duel - Challenge a user to a duel
-daily - Daily challenge
-endless - Endless survival mode
-reward - Claim daily login bonus
-achievements - Your achievements
+help - How to play (also /h)
+profile - Your profile card (also /p)
+leaderboard - Top players (also /l or /top)
+battle - Start a group battle (also /b)
+join - Join a pending group battle (also /j)
+ranked - Queue for a ranked duel (also /r)
+duel - Challenge a user to a duel (also /challenge)
+daily - Daily challenge (also /d)
+endless - Endless survival mode (also /e)
+reward - Claim daily XP bonus (also /bonus)
+achievements - View your achievements (also /ach)
+addfriend - Send a friend request
+acceptfriend - Accept a friend request
+friends - List your friends
+friendduel - Start a casual duel with a friend
 admin_broadcast - (admin) broadcast a message
-admin_give - (admin) give coins or gems
-admin_setprofile - (admin) edit any profile stat
+admin_give - (admin) give XP to a user
+admin_setprofile - (admin) edit a user's stats
 admin_info - (admin) view full user info

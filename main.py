@@ -18,6 +18,7 @@ from handlers.profile import profile_command
 from handlers.leaderboard import leaderboard_global
 from handlers.daily_reward import daily_reward_command
 from handlers.achievements_show import achievements_command
+from handlers.friends import add_friend, accept_friend, list_friends, friend_duel
 from handlers.admin import admin_broadcast, admin_give, admin_setprofile, admin_info
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 import core.events as events
@@ -82,6 +83,23 @@ async def post_init(app):
             del inline_puzzles[pid]
     scheduler.add_job(cleanup_inline, 'interval', minutes=5)
 
+    from core.game_engine import generate_puzzle
+    import random, asyncio
+    async def warm_pool():
+        while True:
+            puzzles = [generate_puzzle(difficulty=random.randint(1,2)) for _ in range(15)]
+            app.bot_data["inline_pool"] = puzzles
+            await asyncio.sleep(180)   # refresh every 3 minutes
+    asyncio.create_task(warm_pool())
+
+    async def cache_leaderboard(app):
+        while True:
+            db = app.bot_data["db"]
+            top = await db.fetchall("SELECT user_id, username, first_name, level, mmr FROM users ORDER BY mmr DESC LIMIT 20")
+            app.bot_data["leaderboard_cache"] = top
+            await asyncio.sleep(30)
+    asyncio.create_task(cache_leaderboard(app))
+
 async def post_shutdown(app):
     db = app.bot_data.get("db")
     if db:
@@ -108,6 +126,10 @@ def main():
     app.add_handler(CommandHandler("admin_give", admin_give))
     app.add_handler(CommandHandler("admin_setprofile", admin_setprofile))
     app.add_handler(CommandHandler("admin_info", admin_info))
+    app.add_handler(CommandHandler("addfriend", add_friend))
+    app.add_handler(CommandHandler("acceptfriend", accept_friend))
+    app.add_handler(CommandHandler("friends", list_friends))
+    app.add_handler(CommandHandler("friendduel", friend_duel))
 
     # Callback Handlers – order matters!
     app.add_handler(CallbackQueryHandler(qp_handle_answer, pattern="^qp_answer_"))

@@ -3,22 +3,28 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 from core.game_engine import generate_puzzle
 from services.xp_progression import award_xp
+from utils.rate_limiter import RateLimiter
 
 LOBBIES_KEY = "gb_lobbies"
 ROUNDS_KEY = "gb_rounds"
 
+battle_limiter = RateLimiter(max_calls=2, period=60)  # max 2 battles per minute per user
+
 async def group_battle_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat = update.effective_chat
+    user = update.effective_user
 
-    # ----- GROUP ONLY GUARD -----
+    # Group only guard
     if chat.type not in ("group", "supergroup"):
         await update.message.reply_text("⚔️ Group battles are only available in groups. Invite me to a group and try again!")
         return
-    # ---------------------------
 
-    user = update.effective_user
+    # Rate limit
+    if not await battle_limiter.is_allowed(user.id):
+        await update.message.reply_text("⏳ Please wait before starting another battle.")
+        return
+
     db = context.bot_data["db"]
-
     lobbies = context.bot_data.setdefault(LOBBIES_KEY, {})
     if chat.id in lobbies and lobbies[chat.id].get("active"):
         await update.message.reply_text("A battle is already in progress!")
@@ -67,13 +73,9 @@ async def group_battle_command(update: Update, context: ContextTypes.DEFAULT_TYP
 
 async def join_battle(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat = update.effective_chat
-
-    # ----- GROUP ONLY GUARD -----
     if chat.type not in ("group", "supergroup"):
         await update.message.reply_text("This command is only for joining a group battle. Use it inside a group where a battle is active.")
         return
-    # ---------------------------
-
     user = update.effective_user
     lobbies = context.bot_data.get(LOBBIES_KEY, {})
     lobby = lobbies.get(chat.id)
