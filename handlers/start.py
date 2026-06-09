@@ -19,16 +19,24 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("ℹ️ Help", callback_data="help")]
     ]
 
-    await update.message.reply_text(
+    text = (
         "🤖 *Guess The Intruder*\n\n"
         "Find the one that doesn't belong!\n"
         "━━━━━━━━━━━━━━━\n"
         "⚡ Fast rounds • 🔥 Combos • 🏆 Leagues\n"
         "━━━━━━━━━━━━━━━\n\n"
-        "Choose a mode:",
-        reply_markup=InlineKeyboardMarkup(keyboard),
-        parse_mode="Markdown"
+        "Choose a mode:"
     )
+
+    # Handle both callback (back button) and direct command
+    if update.callback_query:
+        await update.callback_query.edit_message_text(
+            text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown"
+        )
+    else:
+        await update.message.reply_text(
+            text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown"
+        )
 
 async def menu_redirect(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -42,7 +50,13 @@ async def menu_redirect(update: Update, context: ContextTypes.DEFAULT_TYPE):
         from handlers.quick_play import start_quick_play
         await start_quick_play(update, context)
     elif mode == "mode_groupbattle":
-        await query.edit_message_text("Use /battle in a group to start a group battle!")
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("« Back to Menu", callback_data="start_menu")]
+        ])
+        await query.edit_message_text(
+            "Use /battle in a group to start a group battle!",
+            reply_markup=keyboard
+        )
     elif mode == "mode_ranked":
         from handlers.ranked import ranked_start
         await ranked_start(update, context)
@@ -59,7 +73,9 @@ async def menu_redirect(update: Update, context: ContextTypes.DEFAULT_TYPE):
         from handlers.leaderboard import leaderboard_global
         await leaderboard_global(update, context)
     elif mode == "help":
-        from handlers.help import help_command
         await help_command(update, context)
+    elif mode == "start_menu":
+        # Back to main menu – works now with callback‑aware start()
+        await start(update, context)
     else:
         await query.edit_message_text("Unknown option.")

@@ -1,6 +1,7 @@
 import asyncio, logging, time
 from datetime import datetime, timedelta
 from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, InlineQueryHandler, ContextTypes, MessageHandler, filters
+from telegram import Update
 from telegram.error import NetworkError
 from config import BOT_TOKEN
 from database.engine import Database
@@ -19,7 +20,6 @@ from handlers.leaderboard import leaderboard_global
 from handlers.daily_reward import daily_reward_command
 from handlers.achievements_show import achievements_command
 from handlers.friends import add_friend, accept_friend, list_friends, friend_duel
-from handlers.chat_tracker import track_new_chat, track_my_chat_member
 from handlers.admin import admin_broadcast, admin_give, admin_setprofile, admin_info
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 import core.events as events
@@ -147,7 +147,7 @@ def main():
     app.add_handler(CallbackQueryHandler(inline_answer_callback, pattern="^inline_answer_"))
     app.add_handler(CallbackQueryHandler(menu_redirect, pattern="^mode_|^profile$|^shop$|^leaderboard$|^help$|^start_menu$"))
 
-    # Inline challenge friend (unchanged)
+    # Inline challenge friend
     async def challenge_general(update, context):
         try:
             await update.callback_query.answer("Duel feature coming soon! Use /ranked to queue.", show_alert=True)
@@ -157,18 +157,33 @@ def main():
 
     # Inline queries
     app.add_handler(InlineQueryHandler(inline_query))
-    app.add_error_handler(error_handler)
-    # Track groups when bot is added / removed
-    app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, track_new_chat))
-    app.add_handler(MessageHandler(filters.StatusUpdate.MY_CHAT_MEMBER, track_my_chat_member))
-    # Also catch any message in a group to record it if not already
-    async def record_group_message(update, context):
+
+    # Track groups: when bot is added to a group
+    async def on_bot_added(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        chat = update.effective_chat
+        if chat.type in ("group", "supergroup"):
+            for member in update.message.new_chat_members:
+                if member.id == context.bot.id:
+                    db = context.bot_data["db"]
+                    await db.execute(
+                        "INSERT OR IGNORE INTO bot_chats (chat_id, type) VALUES (?, ?)",
+                        chat.id, chat.type
+                    )
+                    break
+    app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, on_bot_added))
+
+    # Track groups: any message in a group records the group
+    async def record_group_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         chat = update.effective_chat
         if chat.type in ("group", "supergroup"):
             db = context.bot_data["db"]
-            await db.execute("INSERT OR IGNORE INTO bot_chats (chat_id, type) VALUES (?, ?)", chat.id, chat.type)
-
+            await db.execute(
+                "INSERT OR IGNORE INTO bot_chats (chat_id, type) VALUES (?, ?)",
+                chat.id, chat.type
+            )
     app.add_handler(MessageHandler(filters.ChatType.GROUPS, record_group_message))
+
+    app.add_error_handler(error_handler)
 
     app.run_polling()
 

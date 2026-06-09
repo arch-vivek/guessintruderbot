@@ -75,7 +75,15 @@ async def ranked_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not matchmaker_running:
         matchmaker_running = True
         asyncio.create_task(matchmaker(context))
-
+    
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("« Back to Menu", callback_data="start_menu")]
+    ])
+    if update.callback_query:
+        await update.callback_query.edit_message_text(text, reply_markup=keyboard)
+    else:
+        await update.message.reply_text(text, reply_markup=keyboard)
+    
 async def matchmaker(context):
     global matchmaker_running
     db = context.bot_data["db"]

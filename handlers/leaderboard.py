@@ -1,4 +1,4 @@
-from telegram import Update
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 from utils.helpers import smart_reply
 
@@ -11,4 +11,8 @@ async def leaderboard_global(update: Update, context: ContextTypes.DEFAULT_TYPE)
     for i, row in enumerate(top):
         name = row["first_name"] or row["username"] or str(row["user_id"])
         text += f"{i+1}. `{name}` — Lv.{row['level']} | {row['mmr']} MMR\n"
-    await smart_reply(update, context, text, parse_mode="Markdown")
+
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("« Back to Menu", callback_data="start_menu")]
+    ])
+    await smart_reply(update, context, text, parse_mode="Markdown", reply_markup=keyboard)

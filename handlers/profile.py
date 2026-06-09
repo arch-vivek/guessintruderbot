@@ -1,6 +1,6 @@
 import io, os
 from PIL import Image, ImageDraw, ImageFont
-from telegram import Update
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 from services.xp_progression import get_user, xp_for_level
 from utils.helpers import smart_reply
@@ -16,10 +16,7 @@ async def profile_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await smart_reply(update, context, "Profile not found. Use /start first.")
         return
 
-    # No equipped items – use empty set
     equipped_set = set()
-
-    # Fetch user's profile photo
     photos = await context.bot.get_user_profile_photos(user.id, limit=1)
     photo_bytes = None
     if photos.total_count > 0:
@@ -29,23 +26,25 @@ async def profile_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await file.download_to_memory(bio)
         photo_bytes = bio.getvalue()
 
-    # Generate the card image
     card_img = generate_profile_card(profile, photo_bytes, equipped_set)
-
-    # Save to BytesIO
     card_bio = io.BytesIO()
     card_img.save(card_bio, "PNG")
     card_bio.seek(0)
 
-    # Send as photo – handle both callback and direct message
+    back_keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("« Back to Menu", callback_data="start_menu")]
+    ])
+
     if update.callback_query:
         await update.callback_query.message.reply_photo(photo=card_bio, caption="Your Profile")
+        await update.callback_query.message.reply_text("Return to menu:", reply_markup=back_keyboard)
         try:
             await update.callback_query.answer()
         except:
             pass
     else:
         await update.message.reply_photo(photo=card_bio, caption="Your Profile")
+        await update.message.reply_text("Return to menu:", reply_markup=back_keyboard)
 
 def generate_profile_card(user_data: dict, profile_photo_bytes: bytes | None, equipped_set: set) -> Image.Image:
     # Canvas 800x400 – warm cream background

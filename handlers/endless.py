@@ -18,7 +18,6 @@ async def start_endless(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "chat_id": update.effective_chat.id
     }
 
-    # If called from command, send a new message; if callback, edit the existing one.
     if query:
         await query.answer()
         await send_endless_round(query.message, context, is_callback=True)
@@ -32,6 +31,7 @@ async def send_endless_round(message, context, is_callback=True):
     difficulty = min(1 + context.user_data["endless"]["round"] // 3, 5)
     puzzle = generate_puzzle(difficulty)
     keyboard = [[InlineKeyboardButton(opt, callback_data=f"endless_{i}")] for i, opt in enumerate(puzzle["options"])]
+    keyboard.append([InlineKeyboardButton("« Back to Menu", callback_data="start_menu")])
 
     text = f"♾️ *Endless Mode* — Round {context.user_data['endless']['round']+1}\n\n" + "\n".join(puzzle["options"])
     if is_callback:

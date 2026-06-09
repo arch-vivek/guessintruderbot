@@ -1,4 +1,4 @@
-from telegram import Update
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 from utils.helpers import smart_reply
 
@@ -12,7 +12,10 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "🤺 *Duel* – Challenge someone directly with /duel.\n"
         "📅 *Daily Challenge* – Once per day puzzle.\n"
         "♾️ *Endless* – Survive as long as you can.\n"
-        "🎮 *Inline* – Type @guessintruderbot in any chat.\n\n"
+        "🎮 *Inline* – Type @YourBotName in any chat.\n\n"
         "Commands: /profile, /leaderboard, /achievements, /reward"
     )
-    await smart_reply(update, context, text, parse_mode="Markdown")
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("« Back to Menu", callback_data="start_menu")]
+    ])
+    await smart_reply(update, context, text, parse_mode="Markdown", reply_markup=keyboard)

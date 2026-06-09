@@ -26,7 +26,6 @@ async def start_quick_play(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     async with active_games_lock:
-        # If there's an existing game for this user, cancel its timeout task and remove it
         old_game = active_games.pop(user.id, None)
         if old_game and "timeout_task" in old_game:
             old_game["timeout_task"].cancel()
@@ -35,6 +34,7 @@ async def start_quick_play(update: Update, context: ContextTypes.DEFAULT_TYPE):
     puzzle = generate_puzzle(difficulty)
     keyboard = [[InlineKeyboardButton(opt, callback_data=f"qp_answer_{i}")] for i, opt in enumerate(puzzle["options"])]
     keyboard.append([InlineKeyboardButton("❌ Quit", callback_data="qp_quit")])
+    keyboard.append([InlineKeyboardButton("« Back to Menu", callback_data="start_menu")])
 
     msg = await query.edit_message_text(
         f"🕹️ *Quick Play* — Level {difficulty}\n\nFind the intruder!\n\n" + "\n".join(puzzle["options"]),
@@ -52,7 +52,6 @@ async def start_quick_play(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "timeout_task": None
     }
 
-    # Create the timeout task and store it
     timeout_task = asyncio.create_task(auto_timeout(user.id, context, game_state))
     game_state["timeout_task"] = timeout_task
 
@@ -147,17 +146,14 @@ async def handle_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text(text, parse_mode="Markdown")
 
 async def auto_timeout(user_id: int, context: ContextTypes.DEFAULT_TYPE, game_state: dict):
-    """Task that expires the game after 10 seconds, if not already answered."""
     try:
         await asyncio.sleep(10)
-        # After sleeping, check if this game is still the active one (not already popped)
         async with active_games_lock:
             current_game = active_games.get(user_id)
-            if current_game is game_state:   # same object, meaning it wasn't replaced
+            if current_game is game_state:
                 active_games.pop(user_id, None)
             else:
-                return  # Game already handled, nothing to do
-        # Edit the message to show timeout
+                return
         try:
             await context.bot.edit_message_text(
                 chat_id=game_state["chat_id"],
@@ -167,5 +163,4 @@ async def auto_timeout(user_id: int, context: ContextTypes.DEFAULT_TYPE, game_st
         except:
             pass
     except asyncio.CancelledError:
-        # Task was cancelled because the player answered – that's fine
         pass

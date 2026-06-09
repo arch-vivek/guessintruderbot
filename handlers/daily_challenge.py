@@ -7,7 +7,7 @@ from services.xp_progression import award_xp
 from utils.helpers import smart_reply
 from utils.rate_limiter import RateLimiter
 
-daily_limiter = RateLimiter(max_calls=1, period=60)  # once per minute max
+daily_limiter = RateLimiter(max_calls=1, period=60)
 
 async def get_today_challenge(db):
     today_str = str(date.today())
@@ -22,7 +22,6 @@ async def start_daily(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     db = context.bot_data["db"]
 
-    # Rate limit check (extra safety)
     if not await daily_limiter.is_allowed(user.id):
         await smart_reply(update, context, "⏳ Please wait before attempting the daily challenge again.")
         return
@@ -36,6 +35,7 @@ async def start_daily(update: Update, context: ContextTypes.DEFAULT_TYPE):
     challenge = await get_today_challenge(db)
     puzzle = json.loads(challenge["puzzle_data"])
     keyboard = [[InlineKeyboardButton(opt, callback_data=f"daily_answer_{i}")] for i, opt in enumerate(puzzle["options"])]
+    keyboard.append([InlineKeyboardButton("« Back to Menu", callback_data="start_menu")])
 
     if update.callback_query:
         msg = await update.callback_query.edit_message_text(

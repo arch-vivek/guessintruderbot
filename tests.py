@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """
-Complete test suite for Guess The Intruder bot – covers all features & edge cases.
-Run with: python tests.py   (make sure your virtual environment is active)
+Comprehensive test suite for Guess The Intruder bot.
+Tests all features: back buttons, inline play again, rate limits,
+friend system, broadcast, group tracking, duel scoring, etc.
+Run with: python tests.py  (inside your venv)
 """
 
-import sys, os, asyncio, io, time, importlib, traceback, json
+import sys, os, asyncio, time, importlib, traceback, json
 from unittest.mock import MagicMock, patch, AsyncMock
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -12,15 +14,78 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 TEST_DB_PATH = "test_game.db"
 P1_ID = 111111
 P2_ID = 222222
-P3_ID = 333333
+ADMIN_ID = 999999
 
 def cleanup_db():
     if os.path.exists(TEST_DB_PATH):
         os.remove(TEST_DB_PATH)
 
-# ──────────────────────────
+# ────────────────────────────────────
+# Helper to create a mock update and context
+# ────────────────────────────────────
+class MockContext:
+    def __init__(self, bot_data=None, user_data=None, args=None):
+        self.bot_data = bot_data or {}
+        self.user_data = user_data or {}
+        self.args = args or []
+        self.bot = AsyncMock()
+        self.bot.send_message = AsyncMock(return_value=MagicMock(message_id=1, chat_id=1))
+        self.bot.edit_message_text = AsyncMock()
+        self.bot.get_user_profile_photos = AsyncMock()
+        self.bot.get_user_profile_photos.return_value = MagicMock(total_count=0)
+
+def make_callback_update(user, data, message=None, chat_id=1):
+    update = MagicMock()
+    update.callback_query = MagicMock()
+    update.callback_query.from_user = user
+    update.callback_query.data = data
+    # Make the message object with async reply methods
+    msg = MagicMock()
+    msg.reply_photo = AsyncMock()
+    msg.reply_text = AsyncMock()
+    msg.chat_id = chat_id
+    msg.message_id = 10
+    msg.text = "dummy"
+    update.callback_query.message = msg
+    update.callback_query.answer = AsyncMock()
+    update.callback_query.edit_message_text = AsyncMock()
+    update.callback_query.edit_message_reply_markup = AsyncMock()
+    update.message = None
+    update.effective_user = user
+    update.effective_chat = MagicMock()
+    update.effective_chat.id = chat_id
+    update.effective_chat.type = "private"
+    return update
+
+def make_message_update(user, text, chat_id=1, is_group=False):
+    update = MagicMock()
+    msg = MagicMock()
+    msg.from_user = user
+    msg.text = text
+    msg.chat_id = chat_id
+    msg.chat = MagicMock()
+    msg.chat.type = "group" if is_group else "private"
+    msg.reply_text = AsyncMock()
+    msg.reply_photo = AsyncMock()
+    msg.reply_to_message = None
+    update.message = msg
+    update.callback_query = None
+    update.effective_user = user
+    update.effective_chat = MagicMock()
+    update.effective_chat.id = chat_id
+    update.effective_chat.type = "group" if is_group else "private"
+    return update
+
+def make_user(id, username, first_name):
+    user = MagicMock()
+    user.id = id
+    user.username = username
+    user.first_name = first_name
+    return user
+
+# ────────────────────────────────────
 # 1. Syntax
-# ──────────────────────────
+# ────────────────────────────────────
 def test_syntax():
     print("\n=== Testing Syntax ===")
     errors = []
@@ -43,9 +108,9 @@ def test_syntax():
         print("OK")
     return len(errors) == 0
 
-# ──────────────────────────
+# ────────────────────────────────────
 # 2. Imports
-# ──────────────────────────
+# ────────────────────────────────────
 def test_imports():
     print("\n=== Testing Imports ===")
     modules = [
@@ -64,7 +129,6 @@ def test_imports():
         try:
             importlib.import_module(mod)
         except ModuleNotFoundError as e:
-            # Only flag missing internal modules, not external deps
             if "telegram" not in str(e) and "PIL" not in str(e) and "dotenv" not in str(e) and "aiosqlite" not in str(e):
                 errors.append(f"{mod}: {e}")
     if errors:
@@ -75,41 +139,74 @@ def test_imports():
         print("OK")
     return len(errors) == 0
 
-# ──────────────────────────
-# 3. Database & Friend System
-# ──────────────────────────
-async def test_database_and_friends():
-    print("\n=== Testing Database & Friends ===")
+# ────────────────────────────────────
+# 3. Database setup
+# ────────────────────────────────────
+async def test_database():
+    print("\n=== Testing Database ===")
     from database.engine import Database
-    from services.xp_progression import create_user_if_not_exists
     cleanup_db()
     db = Database(TEST_DB_PATH)
     try:
         await db.connect()
+        tables = await db.fetchall("SELECT name FROM sqlite_master WHERE type='table'")
+        table_names = {t["name"] for t in tables}
+        required = ["users", "friendships", "achievements", "matches", "daily_challenges", "seasons", "bot_chats"]
+        for tbl in required:
+            if tbl not in table_names:
+                print(f"FAILED - table '{tbl}' missing")
+                return False
+        print("OK")
+        return True
+    finally:
+        await db.close()
+        cleanup_db()
 
-        # Create three users
-        await create_user_if_not_exists(P1_ID, "alice", "Alice", db)
-        await create_user_if_not_exists(P2_ID, "bob", "Bob", db)
-        await create_user_if_not_exists(P3_ID, "charlie", "Charlie", db)
+# ────────────────────────────────────
+# 4. Back buttons in various handlers
+# ────────────────────────────────────
+async def test_back_buttons():
+    print("\n=== Testing Back Buttons ===")
+    from database.engine import Database
+    from services.xp_progression import create_user_if_not_exists
+    cleanup_db()
+    db = Database(TEST_DB_PATH)
+    await db.connect()
+    try:
+        await create_user_if_not_exists(P1_ID, "testuser", "Test", db)
+        user = make_user(P1_ID, "testuser", "Test")
 
-        # Test friend request
-        await db.execute("INSERT INTO friendships (user_id, friend_id, status) VALUES (?, ?, 'pending')", P1_ID, P2_ID)
-        req = await db.fetchone("SELECT status FROM friendships WHERE user_id = ? AND friend_id = ?", P1_ID, P2_ID)
-        assert req["status"] == "pending", "Friend request not created"
+        # Test Profile
+        context = MockContext(bot_data={"db": db})
+        update = make_callback_update(user, "profile")
+        from handlers.profile import profile_command
+        await profile_command(update, context)
+        # The profile_command sends a photo and then a text with back button.
+        # Check that reply_photo was called
+        assert update.callback_query.message.reply_photo.called, "Profile photo not sent"
+        # Check that a "Return to menu" message was sent via send_message or reply_text
+        # In our profile handler, we use update.callback_query.message.reply_text for back button.
+        reply_text_calls = update.callback_query.message.reply_text.call_args_list
+        found_back = any("Return to menu" in str(args) for args in reply_text_calls)
+        assert found_back, "Profile back button missing"
 
-        # Test accept
-        await db.execute("UPDATE friendships SET status = 'accepted' WHERE user_id = ? AND friend_id = ?", P1_ID, P2_ID)
-        await db.execute("INSERT OR IGNORE INTO friendships (user_id, friend_id, status) VALUES (?, ?, 'accepted')", P2_ID, P1_ID)
-        f1 = await db.fetchone("SELECT status FROM friendships WHERE user_id = ? AND friend_id = ?", P1_ID, P2_ID)
-        f2 = await db.fetchone("SELECT status FROM friendships WHERE user_id = ? AND friend_id = ?", P2_ID, P1_ID)
-        assert f1["status"] == "accepted" and f2["status"] == "accepted", "Bidirectional friendship failed"
+        # Test Leaderboard
+        update = make_callback_update(user, "leaderboard")
+        from handlers.leaderboard import leaderboard_global
+        await leaderboard_global(update, context)
+        edit_calls = update.callback_query.edit_message_text.call_args_list
+        found_back = any("Back to Menu" in str(args) for args in edit_calls)
+        assert found_back, "Leaderboard back button missing"
 
-        # Test duplicate request
-        await db.execute("INSERT OR IGNORE INTO friendships (user_id, friend_id, status) VALUES (?, ?, 'pending')", P1_ID, P2_ID)
-        dup = await db.fetchone("SELECT COUNT(*) as cnt FROM friendships WHERE user_id = ? AND friend_id = ?", P1_ID, P2_ID)
-        assert dup["cnt"] == 1, "Duplicate friend request allowed"
+        # Test Help
+        update = make_callback_update(user, "help")
+        from handlers.help import help_command
+        await help_command(update, context)
+        edit_calls = update.callback_query.edit_message_text.call_args_list
+        found_back = any("Back to Menu" in str(args) for args in edit_calls)
+        assert found_back, "Help back button missing"
 
-        print("OK - Friend system works")
+        print("OK")
         return True
     except Exception as e:
         print(f"FAILED - {e}")
@@ -119,68 +216,69 @@ async def test_database_and_friends():
         await db.close()
         cleanup_db()
 
-# ──────────────────────────
-# 4. Inline Puzzle Pool
-# ──────────────────────────
-async def test_inline_pool():
-    print("\n=== Testing Inline Puzzle Pool ===")
+# ────────────────────────────────────
+# 5. Inline Play Again
+# ────────────────────────────────────
+async def test_inline_play_again():
+    print("\n=== Testing Inline Play Again ===")
+    from handlers.inline_query import inline_answer_callback, inline_play_again_callback
     from core.game_engine import generate_puzzle
-    pool = [generate_puzzle(difficulty=1) for _ in range(5)]
-    assert len(pool) == 5
-    p = pool.pop(0)
-    assert "options" in p
-    print("OK - Inline pool works")
-    return True
-
-# ──────────────────────────
-# 5. Leaderboard Cache
-# ──────────────────────────
-async def test_leaderboard_cache():
-    print("\n=== Testing Leaderboard Cache ===")
-    from database.engine import Database
-    from services.xp_progression import create_user_if_not_exists
     cleanup_db()
+    from database.engine import Database
     db = Database(TEST_DB_PATH)
+    await db.connect()
     try:
-        await db.connect()
-        await create_user_if_not_exists(P1_ID, "alice", "Alice", db)
-        await create_user_if_not_exists(P2_ID, "bob", "Bob", db)
-        top = await db.fetchall("SELECT user_id, username, first_name, level, mmr FROM users ORDER BY mmr DESC LIMIT 20")
-        assert len(top) == 2
-        print("OK - Leaderboard cache works")
+        user = make_user(P1_ID, "test", "Test")
+        puzzle = generate_puzzle(1)
+        puzzle_id = "test123"
+        context = MockContext(bot_data={
+            "db": db,
+            "inline_puzzles": {
+                puzzle_id: {"puzzle": puzzle, "expires": time.time()+600, "answered_users": set()}
+            }
+        })
+        update = make_callback_update(user, f"inline_answer_{puzzle_id}_{puzzle['intruder_index']}")
+        await inline_answer_callback(update, context)
+        edit_calls = update.callback_query.edit_message_text.call_args_list
+        found_play_again = any("Play Again" in str(args) for args in edit_calls)
+        assert found_play_again, "Play Again button not added"
+
+        # Simulate Play Again click
+        update2 = make_callback_update(user, "inline_play_again")
+        await inline_play_again_callback(update2, context)
+        edit_calls2 = update2.callback_query.edit_message_text.call_args_list
+        text = edit_calls2[-1].args[0] if edit_calls2 else ""
+        assert "Guess the Intruder" in str(text), "Play Again didn't load new puzzle"
+
+        print("OK")
         return True
     except Exception as e:
         print(f"FAILED - {e}")
+        traceback.print_exc()
         return False
     finally:
         await db.close()
         cleanup_db()
 
-# ──────────────────────────
-# 6. Rate Limiter
-# ──────────────────────────
+# ────────────────────────────────────
+# 6. Rate limiter
+# ────────────────────────────────────
 async def test_rate_limiter():
     print("\n=== Testing Rate Limiter ===")
     from utils.rate_limiter import RateLimiter
     limiter = RateLimiter(max_calls=3, period=2)
-
-    # Must use await
     assert await limiter.is_allowed(123) == True
     assert await limiter.is_allowed(123) == True
     assert await limiter.is_allowed(123) == True
-    # 4th call should be blocked
     assert await limiter.is_allowed(123) == False
-
-    # Wait for the period to expire (use asyncio.sleep, not time.sleep)
     await asyncio.sleep(2.1)
-
-    # Now allowed again
     assert await limiter.is_allowed(123) == True
-    print("OK - Rate limiter works")
+    print("OK")
     return True
-# ──────────────────────────
-# 7. Duel Scoring
-# ──────────────────────────
+
+# ────────────────────────────────────
+# 7. Duel scoring
+# ────────────────────────────────────
 async def test_duel_scoring():
     print("\n=== Testing Duel Scoring ===")
     from database.engine import Database
@@ -189,11 +287,7 @@ async def test_duel_scoring():
     cleanup_db()
     db = Database(TEST_DB_PATH)
     await db.connect()
-    mock_ctx = MagicMock()
-    mock_ctx.bot_data = {"db": db}
-    mock_ctx.bot = AsyncMock()
-    mock_ctx.bot.send_message = AsyncMock(return_value=MagicMock(message_id=1, chat_id=1))
-    mock_ctx.bot.edit_message_text = AsyncMock()
+    mock_ctx = MockContext(bot_data={"db": db})
     with patch('asyncio.sleep', new=AsyncMock()):
         try:
             await create_user_if_not_exists(P1_ID, "alice", "Alice", db)
@@ -214,7 +308,7 @@ async def test_duel_scoring():
             assert p1["wins"] == 1
             assert p1["mmr"] > 1200
             assert p2["mmr"] < 1200
-            print("OK - Duel scoring correct")
+            print("OK")
             return True
         except Exception as e:
             print(f"FAILED - {e}")
@@ -224,9 +318,104 @@ async def test_duel_scoring():
             await db.close()
             cleanup_db()
 
-# ──────────────────────────
-# 8. XP
-# ──────────────────────────
+# ────────────────────────────────────
+# 8. Friend system
+# ────────────────────────────────────
+async def test_friend_system():
+    print("\n=== Testing Friend System ===")
+    from database.engine import Database
+    from services.xp_progression import create_user_if_not_exists
+    cleanup_db()
+    db = Database(TEST_DB_PATH)
+    await db.connect()
+    try:
+        await create_user_if_not_exists(P1_ID, "alice", "Alice", db)
+        await create_user_if_not_exists(P2_ID, "bob", "Bob", db)
+        from handlers.friends import add_friend, accept_friend, list_friends, friend_duel
+
+        user_alice = make_user(P1_ID, "alice", "Alice")
+        update = make_message_update(user_alice, "/addfriend bob")
+        context = MockContext(bot_data={"db": db}, args=["bob"])
+        await add_friend(update, context)
+        req = await db.fetchone("SELECT status FROM friendships WHERE user_id = ? AND friend_id = ?", P1_ID, P2_ID)
+        assert req and req["status"] == "pending", "Friend request not created"
+
+        user_bob = make_user(P2_ID, "bob", "Bob")
+        update = make_message_update(user_bob, "/acceptfriend alice")
+        context = MockContext(bot_data={"db": db}, args=["alice"])
+        await accept_friend(update, context)
+        f1 = await db.fetchone("SELECT status FROM friendships WHERE user_id = ? AND friend_id = ?", P1_ID, P2_ID)
+        f2 = await db.fetchone("SELECT status FROM friendships WHERE user_id = ? AND friend_id = ?", P2_ID, P1_ID)
+        assert f1 and f1["status"] == "accepted", "Friendship not accepted"
+        assert f2 and f2["status"] == "accepted", "Bidirectional friendship missing"
+
+        update = make_message_update(user_alice, "/friends")
+        context = MockContext(bot_data={"db": db})
+        await list_friends(update, context)
+        sent_text = update.message.reply_text.call_args[0][0]
+        assert "Bob" in sent_text, "Friend not listed"
+
+        update = make_message_update(user_alice, "/friendduel bob")
+        context = MockContext(bot_data={"db": db}, args=["bob"])
+        await friend_duel(update, context)
+        assert context.bot.send_message.call_count >= 2, "Friend duel not started"
+
+        print("OK")
+        return True
+    except Exception as e:
+        print(f"FAILED - {e}")
+        traceback.print_exc()
+        return False
+    finally:
+        await db.close()
+        cleanup_db()
+
+# ────────────────────────────────────
+# 9. Broadcast groups
+# ────────────────────────────────────
+async def test_broadcast_groups():
+    print("\n=== Testing Broadcast Groups ===")
+    from database.engine import Database
+    from services.xp_progression import create_user_if_not_exists
+    cleanup_db()
+    db = Database(TEST_DB_PATH)
+    await db.connect()
+    try:
+        await create_user_if_not_exists(ADMIN_ID, "admin", "Admin", db)
+        await db.execute("INSERT OR IGNORE INTO bot_chats (chat_id, type) VALUES (?, 'group')", -12345)
+
+        from handlers.admin import admin_broadcast
+        user_admin = make_user(ADMIN_ID, "admin", "Admin")
+        update = make_message_update(user_admin, "/admin_broadcast Hello world")
+        context = MockContext(bot_data={"db": db}, args=["Hello", "world"])
+
+        import config
+        original_ids = config.ADMIN_IDS
+        config.ADMIN_IDS = [ADMIN_ID]
+        await admin_broadcast(update, context)
+        config.ADMIN_IDS = original_ids
+
+        # Collect all chat_ids that received a message
+        sent_chat_ids = []
+        for call in context.bot.send_message.call_args_list:
+            pos_args = call[0]
+            if pos_args:
+                sent_chat_ids.append(pos_args[0])
+
+        # The admin user (ADMIN_ID) and the group (-12345) must both be present
+        assert ADMIN_ID in sent_chat_ids, "Admin user did not receive broadcast"
+        assert -12345 in sent_chat_ids, "Group did not receive broadcast"
+        print("OK")
+        return True
+    except Exception as e:
+        print(f"FAILED - {e}")
+        traceback.print_exc()
+        return False
+    finally:
+        await db.close()
+        cleanup_db()
+# 10. XP
+# ────────────────────────────────────
 async def test_xp():
     print("\n=== Testing XP ===")
     from database.engine import Database
@@ -244,7 +433,7 @@ async def test_xp():
         if user["level"] < 2:
             print("FAILED - level not increased")
             return False
-        print("OK - XP & level up work")
+        print("OK")
         return True
     except Exception as e:
         print(f"FAILED - {e}")
@@ -253,18 +442,20 @@ async def test_xp():
         await db.close()
         cleanup_db()
 
-# ──────────────────────────
+# ────────────────────────────────────
 # Runner
-# ──────────────────────────
+# ────────────────────────────────────
 async def run_all_tests():
     results = []
     results.append(("Syntax", test_syntax()))
     results.append(("Imports", test_imports()))
-    results.append(("Database & Friends", await test_database_and_friends()))
-    results.append(("Inline Pool", await test_inline_pool()))
-    results.append(("Leaderboard Cache", await test_leaderboard_cache()))
-    results.append(("Rate Limiter", test_rate_limiter()))
+    results.append(("Database", await test_database()))
+    results.append(("Back Buttons", await test_back_buttons()))
+    results.append(("Inline Play Again", await test_inline_play_again()))
+    results.append(("Rate Limiter", await test_rate_limiter()))
     results.append(("Duel Scoring", await test_duel_scoring()))
+    results.append(("Friend System", await test_friend_system()))
+    results.append(("Broadcast Groups", await test_broadcast_groups()))
     results.append(("XP", await test_xp()))
 
     print("\n\n========== SUMMARY ==========")
