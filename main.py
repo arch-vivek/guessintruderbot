@@ -1,6 +1,6 @@
 import asyncio, logging, time
 from datetime import datetime, timedelta
-from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, InlineQueryHandler, ContextTypes
+from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, InlineQueryHandler, ContextTypes, MessageHandler, filters
 from telegram.error import NetworkError
 from config import BOT_TOKEN
 from database.engine import Database
@@ -19,6 +19,7 @@ from handlers.leaderboard import leaderboard_global
 from handlers.daily_reward import daily_reward_command
 from handlers.achievements_show import achievements_command
 from handlers.friends import add_friend, accept_friend, list_friends, friend_duel
+from handlers.chat_tracker import track_new_chat, track_my_chat_member
 from handlers.admin import admin_broadcast, admin_give, admin_setprofile, admin_info
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 import core.events as events
@@ -157,6 +158,17 @@ def main():
     # Inline queries
     app.add_handler(InlineQueryHandler(inline_query))
     app.add_error_handler(error_handler)
+    # Track groups when bot is added / removed
+    app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, track_new_chat))
+    app.add_handler(MessageHandler(filters.StatusUpdate.MY_CHAT_MEMBER, track_my_chat_member))
+    # Also catch any message in a group to record it if not already
+    async def record_group_message(update, context):
+        chat = update.effective_chat
+        if chat.type in ("group", "supergroup"):
+            db = context.bot_data["db"]
+            await db.execute("INSERT OR IGNORE INTO bot_chats (chat_id, type) VALUES (?, ?)", chat.id, chat.type)
+
+    app.add_handler(MessageHandler(filters.ChatType.GROUPS, record_group_message))
 
     app.run_polling()
 

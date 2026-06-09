@@ -49,6 +49,7 @@ CREATE TABLE IF NOT EXISTS matches (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+
 CREATE TABLE IF NOT EXISTS daily_challenges (
     date TEXT PRIMARY KEY,
     puzzle_data TEXT NOT NULL,
@@ -62,6 +63,12 @@ CREATE TABLE IF NOT EXISTS seasons (
     start_date TIMESTAMP NOT NULL,
     end_date TIMESTAMP NOT NULL,
     active INTEGER DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS bot_chats (
+    chat_id INTEGER PRIMARY KEY,
+    type TEXT DEFAULT 'group',
+    added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE INDEX IF NOT EXISTS idx_users_mmr ON users(mmr DESC);

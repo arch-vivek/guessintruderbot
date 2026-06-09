@@ -1,3 +1,4 @@
+import asyncio
 from telegram import Update
 from telegram.ext import ContextTypes
 from config import ADMIN_IDS
@@ -5,7 +6,7 @@ from config import ADMIN_IDS
 def is_admin(user_id: int) -> bool:
     return user_id in ADMIN_IDS
 
-# /admin_broadcast <message>
+
 async def admin_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_admin(update.effective_user.id):
         await update.message.reply_text("❌ Admin only.")
@@ -13,17 +14,34 @@ async def admin_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         await update.message.reply_text("Usage: /admin_broadcast <message>")
         return
+
     text = " ".join(context.args)
     db = context.bot_data["db"]
+
+    # Send to users
     users = await db.fetchall("SELECT user_id FROM users")
-    count = 0
+    count_users = 0
     for u in users:
         try:
             await context.bot.send_message(u["user_id"], text)
-            count += 1
+            count_users += 1
         except:
             pass
-    await update.message.reply_text(f"Broadcast sent to {count} users.")
+
+    # Send to groups
+    groups = await db.fetchall("SELECT chat_id FROM bot_chats")
+    count_groups = 0
+    for g in groups:
+        try:
+            await context.bot.send_message(g["chat_id"], text)
+            count_groups += 1
+            await asyncio.sleep(0.05)   # tiny delay to avoid rate limits
+        except:
+            pass
+
+    await update.message.reply_text(
+        f"✅ Broadcast sent to {count_users} users and {count_groups} groups."
+    )
 
 # /admin_give <user_id> <xp_amount>
 async def admin_give(update: Update, context: ContextTypes.DEFAULT_TYPE):
