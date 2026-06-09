@@ -104,7 +104,10 @@ async def post_shutdown(app):
     db = app.bot_data.get("db")
     if db:
         await db.close()
-    scheduler.shutdown()
+    try:
+        scheduler.shutdown()
+    except Exception:
+        pass
 
 def main():
     app = ApplicationBuilder().token(BOT_TOKEN).post_init(post_init).post_shutdown(post_shutdown).build()
