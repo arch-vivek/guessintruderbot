@@ -442,6 +442,37 @@ async def test_xp():
         await db.close()
         cleanup_db()
 
+async def test_free_chat():
+    print("\n=== Testing Free Chat ===")
+    from handlers.free_chat import free_chat_reply, chat_limiter
+    chat_limiter.users.clear()
+
+    user = make_user(P1_ID, "tester", "Tester")
+
+    # 1. FAQ match
+    update = make_message_update(user, "how to play", is_group=False)
+    context = MockContext(bot_data={})
+    await free_chat_reply(update, context)
+    called_text = update.message.reply_text.call_args[0][0]
+    assert "How to Play" in called_text, f"FAQ not matched, got: {called_text}"
+
+    # 2. Casual chat fallback
+    update = make_message_update(user, "Hello bot", is_group=False)
+    await free_chat_reply(update, context)
+    assert update.message.reply_text.called
+
+    # 3. Rate limiter (5 replies, then blocked)
+    for _ in range(3):  # already used 2, total 5
+        update = make_message_update(user, "Hi", is_group=False)
+        await free_chat_reply(update, context)
+        assert update.message.reply_text.called
+
+    update = make_message_update(user, "Spam", is_group=False)
+    await free_chat_reply(update, context)
+    assert not update.message.reply_text.called, "Rate limiter failed"
+
+    print("OK")
+    return True
 # ────────────────────────────────────
 # Runner
 # ────────────────────────────────────
@@ -457,7 +488,8 @@ async def run_all_tests():
     results.append(("Friend System", await test_friend_system()))
     results.append(("Broadcast Groups", await test_broadcast_groups()))
     results.append(("XP", await test_xp()))
-
+    results.append(("Free Chat", await test_free_chat()))
+    
     print("\n\n========== SUMMARY ==========")
     passed = all(r[1] for r in results)
     for name, ok in results:
@@ -468,6 +500,7 @@ async def run_all_tests():
     else:
         print("\n❌ Some tests failed. Review the errors above.")
     return passed
+
 
 if __name__ == "__main__":
     asyncio.run(run_all_tests())

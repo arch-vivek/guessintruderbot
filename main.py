@@ -20,6 +20,7 @@ from handlers.leaderboard import leaderboard_global
 from handlers.daily_reward import daily_reward_command
 from handlers.achievements_show import achievements_command
 from handlers.friends import add_friend, accept_friend, list_friends, friend_duel
+from handlers.free_chat import free_chat_reply
 from handlers.admin import admin_broadcast, admin_give, admin_setprofile, admin_info
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 import core.events as events
@@ -146,7 +147,9 @@ def main():
     app.add_handler(CallbackQueryHandler(endless_answer, pattern="^endless_"))
     app.add_handler(CallbackQueryHandler(inline_answer_callback, pattern="^inline_answer_"))
     app.add_handler(CallbackQueryHandler(menu_redirect, pattern="^mode_|^profile$|^shop$|^leaderboard$|^help$|^start_menu$"))
-
+        # Free chatbot replies in private chat (rate‑limited)
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, free_chat_reply))
+    
     # Inline challenge friend
     async def challenge_general(update, context):
         try:
