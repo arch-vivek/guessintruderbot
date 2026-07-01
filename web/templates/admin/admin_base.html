@@ -1,0 +1,34 @@
+{% extends "base.html" %} {% block content %}
+<div class="row">
+  <div class="col-md-3">
+    <div class="list-group shadow-sm">
+      <a
+        href="{{ url_for('admin_dashboard') }}"
+        class="list-group-item list-group-item-action {% if request.endpoint == 'admin_dashboard' %}active{% endif %}"
+        >Dashboard</a
+      >
+      <a
+        href="{{ url_for('admin_users') }}"
+        class="list-group-item list-group-item-action {% if request.endpoint == 'admin_users' %}active{% endif %}"
+        >Users</a
+      >
+      <a
+        href="{{ url_for('admin_analytics') }}"
+        class="list-group-item list-group-item-action {% if request.endpoint == 'admin_analytics' %}active{% endif %}"
+        >Analytics</a
+      >
+      <a
+        href="{{ url_for('admin_logs') }}"
+        class="list-group-item list-group-item-action {% if request.endpoint == 'admin_logs' %}active{% endif %}"
+        >Logs</a
+      >
+      <a
+        href="{{ url_for('admin_reports') }}"
+        class="list-group-item list-group-item-action {% if request.endpoint == 'admin_reports' %}active{% endif %}"
+        >Reports</a
+      >
+    </div>
+  </div>
+  <div class="col-md-9">{% block admin_content %}{% endblock %}</div>
+</div>
+{% endblock %}

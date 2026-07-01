@@ -1,9 +1,10 @@
 import asyncio, time, json, logging
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup 
 from telegram.ext import ContextTypes
 from core.game_engine import generate_puzzle
 from services.xp_progression import award_xp
 from utils.rate_limiter import RateLimiter
+from log import logger
 
 LOBBIES_KEY = "gb_lobbies"
 ROUNDS_KEY = "gb_rounds"
@@ -70,6 +71,7 @@ async def group_battle_command(update: Update, context: ContextTypes.DEFAULT_TYP
     lobby["scores"] = {p: 0 for p in lobby["players"]}
     await context.bot.send_message(chat.id, "⚔️ Battle begins! Check your private messages.")
     await run_battle_rounds(chat.id, context)
+    logger.info(f"Group battle started in chat {chat.id} by user {user.id}")
 
 async def join_battle(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat = update.effective_chat
@@ -187,6 +189,7 @@ async def run_battle_rounds(chat_id, context):
         await award_xp(winner, 200, context.bot_data["db"], combo=2)
         await context.bot.send_message(chat_id, f"🏆 *Winner: {winner}* with {lobby['scores'][winner]} points!")
     del lobbies[chat_id]
+    logger.info(f"Group battle winner: {winner} in chat {chat_id}")
 
 async def gb_answer_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -219,3 +222,4 @@ async def gb_answer_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await query.edit_message_reply_markup(reply_markup=None)
     except:
         pass
+    

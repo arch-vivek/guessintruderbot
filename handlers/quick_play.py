@@ -8,6 +8,7 @@ from services.xp_progression import award_xp
 from services.achievements import check_achievement, check_streak_achievements, check_win_achievements
 from core.anti_cheat import is_suspicious_speed
 from utils.rate_limiter import game_start_limiter
+from log import logger, log_game_event
 
 active_games = {}
 active_games_lock = asyncio.Lock()
@@ -133,6 +134,8 @@ async def handle_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 text += f"⬆️ Level Up! {gained_info[3]} → {gained_info[1]}\n"
 
         await query.edit_message_text(text, parse_mode="Markdown")
+        logger.debug(f"User {user.id} answered correctly in Quick Play (streak={new_streak}, combo={combo})")
+        log_game_event("quick_play_correct", user.id, f"streak={new_streak}, combo={combo}")
 
         if new_streak > 0 and new_streak % 5 == 0:
             bonus_xp = 50
@@ -144,6 +147,8 @@ async def handle_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         text = f"❌ *WRONG!*\n\nThe intruder was: {puzzle['options'][puzzle['intruder_index']]}\n"
         await query.edit_message_text(text, parse_mode="Markdown")
+    logger.debug(f"User {user.id} answered wrongly in Quick Play (streak={new_streak}, combo={combo})")
+    log_game_event("quick_play_correct", user.id, f"streak={new_streak}, combo={combo}")
 
 async def auto_timeout(user_id: int, context: ContextTypes.DEFAULT_TYPE, game_state: dict):
     try:

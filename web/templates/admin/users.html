@@ -1,0 +1,33 @@
+{% extends "admin/admin_base.html" %} {% block admin_content %}
+<h3>All Users</h3>
+<table class="table table-hover mt-3">
+  <thead>
+    <tr>
+      <th>ID</th>
+      <th>Username</th>
+      <th>First Name</th>
+      <th>MMR</th>
+      <th>Level</th>
+      <th>Actions</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for u in users %}
+    <tr>
+      <td>{{ u['user_id'] }}</td>
+      <td>{{ u['username'] or '-' }}</td>
+      <td>{{ u['first_name'] or '-' }}</td>
+      <td>{{ u['mmr'] }}</td>
+      <td>{{ u['level'] }}</td>
+      <td>
+        <a
+          href="{{ url_for('admin_edit_user', user_id=u['user_id']) }}"
+          class="btn btn-sm btn-outline-primary"
+          >Edit</a
+        >
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

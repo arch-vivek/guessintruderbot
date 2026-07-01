@@ -2,3 +2,5 @@ python-telegram-bot[job-queue]
 aiosqlite
 Pillow
 python-dotenv
+flask
+requests

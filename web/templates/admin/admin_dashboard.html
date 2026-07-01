@@ -1,0 +1,51 @@
+{% extends "admin/admin_base.html" %} {% block admin_content %}
+<div class="row">
+  <div class="col-md-3">
+    <div class="card p-3 text-center">
+      <h3 class="text-gold">{{ total_users }}</h3>
+      <small class="text-muted">Total Users</small>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card p-3 text-center">
+      <h3 class="text-gold">{{ total_matches }}</h3>
+      <small class="text-muted">Total Matches</small>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card p-3 text-center">
+      <h3 class="text-gold">{{ active_today }}</h3>
+      <small class="text-muted">Active Today</small>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card p-3 text-center">
+      <h3 class="text-gold">{{ new_today }}</h3>
+      <small class="text-muted">New Today</small>
+    </div>
+  </div>
+</div>
+<div class="row mt-4">
+  <div class="col-12">
+    <div class="card p-3">
+      <h5 class="card-title">Quick Actions</h5>
+      <a href="{{ url_for('admin_users') }}" class="btn btn-outline-primary m-1"
+        >Manage Users</a
+      >
+      <a
+        href="{{ url_for('admin_analytics') }}"
+        class="btn btn-outline-primary m-1"
+        >View Analytics</a
+      >
+      <a href="{{ url_for('admin_logs') }}" class="btn btn-outline-primary m-1"
+        >View Logs</a
+      >
+      <a
+        href="{{ url_for('admin_reports') }}"
+        class="btn btn-outline-primary m-1"
+        >Download Reports</a
+      >
+    </div>
+  </div>
+</div>
+{% endblock %}

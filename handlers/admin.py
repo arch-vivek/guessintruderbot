@@ -2,6 +2,7 @@ import asyncio
 from telegram import Update
 from telegram.ext import ContextTypes
 from config import ADMIN_IDS
+from log import logger
 
 def is_admin(user_id: int) -> bool:
     return user_id in ADMIN_IDS
@@ -42,6 +43,7 @@ async def admin_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         f"✅ Broadcast sent to {count_users} users and {count_groups} groups."
     )
+    logger.warning(f"Admin {update.effective_user.id} broadcasted: {text}")
 
 # /admin_give <user_id> <xp_amount>
 async def admin_give(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -62,7 +64,8 @@ async def admin_give(update: Update, context: ContextTypes.DEFAULT_TYPE):
     db = context.bot_data["db"]
     await award_xp(target_id, amount, db, combo=1)
     await update.message.reply_text(f"✅ Gave {amount} XP to user {target_id}.")
-
+    logger.warning(f"Admin {update.effective_user.id} gave {amount} XP to user {target_id}")
+    
 # /admin_setprofile <user_id> <field> <value>
 # /admin_setprofile <user_id> <field> <value>
 # Allowed: xp, level, mmr, rank_tier, wins, losses, streak, max_streak

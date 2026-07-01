@@ -2,6 +2,7 @@ import random
 from telegram import Update
 from telegram.ext import ContextTypes
 from utils.rate_limiter import RateLimiter
+from log import logger
 
 chat_limiter = RateLimiter(max_calls=5, period=60)
 
@@ -214,3 +215,4 @@ async def free_chat_reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply = random.choice(FALLBACK)
 
     await msg.reply_text(reply, parse_mode="Markdown")
+    logger.debug(f"FAQ hit for user {user.id}: keyword='{keyword}'")

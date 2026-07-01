@@ -1,0 +1,62 @@
+{% extends "base.html" %} {% block content %}
+<h2 class="mb-4">👋 Welcome, {{ session.first_name or session.username }}</h2>
+<div class="row g-4">
+  <!-- Stats Cards -->
+  <div class="col-md-4">
+    <div class="card p-3 text-center">
+      <h4 class="text-gold">{{ user['level'] }}</h4>
+      <small>Level</small>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card p-3 text-center">
+      <h4 class="text-gold">{{ user['mmr'] }}</h4>
+      <small>MMR</small>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card p-3 text-center">
+      <h4 class="text-gold">{{ user['wins'] }} / {{ user['total_games'] }}</h4>
+      <small>Wins / Games</small>
+    </div>
+  </div>
+</div>
+
+<div class="row mt-4 g-4">
+  <!-- Achievements -->
+  <div class="col-md-6">
+    <div class="card p-3">
+      <h5 class="card-title">🏅 Achievements</h5>
+      <ul class="list-group list-group-flush">
+        {% for ach in achievements %}
+        <li class="list-group-item bg-transparent text-light border-0">
+          {{ ach['achievement_id'] }}
+          <small class="text-muted">{{ ach['unlocked_at'] }}</small>
+        </li>
+        {% else %}
+        <li class="list-group-item bg-transparent text-light">
+          No achievements yet.
+        </li>
+        {% endfor %}
+      </ul>
+    </div>
+  </div>
+  <!-- Recent Matches -->
+  <div class="col-md-6">
+    <div class="card p-3">
+      <h5 class="card-title">⚔️ Recent Matches</h5>
+      <div class="list-group list-group-flush">
+        {% for m in recent_matches %}
+        <div class="list-group-item bg-transparent text-light border-0">
+          {{ m['mode'] }} – {{ m['created_at'] }}
+        </div>
+        {% else %}
+        <div class="list-group-item bg-transparent text-light">
+          No matches yet.
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

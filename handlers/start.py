@@ -2,11 +2,13 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 from services.xp_progression import create_user_if_not_exists
 from handlers.help import help_command
+from log import logger
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     db = context.bot_data["db"]
     await create_user_if_not_exists(user.id, user.username, user.first_name, db)
+    logger.info(f"User {user.id} (@{user.username}) started the bot")
 
     keyboard = [
         [InlineKeyboardButton("⚡ Quick Play", callback_data="mode_quickplay"),

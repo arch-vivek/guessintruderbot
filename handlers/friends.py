@@ -1,5 +1,6 @@
 from telegram import Update
 from telegram.ext import ContextTypes
+from log import logger
 
 async def add_friend(update: Update, context: ContextTypes.DEFAULT_TYPE):
     sender = update.effective_user
@@ -24,6 +25,7 @@ async def add_friend(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     await db.execute("INSERT INTO friendships (user_id, friend_id, status) VALUES (?, ?, 'pending')", sender.id, target["user_id"])
     await update.message.reply_text(f"Friend request sent to @{target_username}!")
+    logger.info(f"User {sender.id} added friend @{target_username}")
 
 async def accept_friend(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
@@ -45,6 +47,7 @@ async def accept_friend(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Make it bidirectional
     await db.execute("INSERT OR IGNORE INTO friendships (user_id, friend_id, status) VALUES (?, ?, 'accepted')", user.id, requester["user_id"])
     await update.message.reply_text(f"Now friends with @{requester_username}!")
+    logger.info(f"User {user.id} accepted friend request from @{requester_username}")
 
 async def list_friends(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
@@ -85,3 +88,4 @@ async def friend_duel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Start a casual duel (no MMR change)
     await start_duel(challenger.id, target["user_id"], context, db, is_ranked=False, group_chat_id=None)
     await update.message.reply_text(f"⚔️ Casual duel started with @{target_username}! Check your private messages.")
+    

@@ -1,0 +1,124 @@
+{% extends "admin/admin_base.html" %} {% block admin_content %}
+<h3 class="mb-4">Analytics Dashboard</h3>
+
+<!-- Data islands – safely hold JSON strings -->
+<script type="application/json" id="dau-json">
+  {{ dau_json | safe }}
+</script>
+<script type="application/json" id="modes-json">
+  {{ modes_json | safe }}
+</script>
+<script type="application/json" id="xp-json">
+  {{ xp_json | safe }}
+</script>
+<script type="application/json" id="ach-json">
+  {{ ach_json | safe }}
+</script>
+
+<div class="row g-4">
+  <div class="col-md-6">
+    <div class="card p-3">
+      <h5 class="card-title">Daily Active Users (7 days)</h5>
+      <canvas id="dauChart"></canvas>
+    </div>
+  </div>
+  <div class="col-md-6">
+    <div class="card p-3">
+      <h5 class="card-title">Games per Mode</h5>
+      <canvas id="modesChart"></canvas>
+    </div>
+  </div>
+</div>
+<div class="row g-4 mt-2">
+  <div class="col-md-6">
+    <div class="card p-3">
+      <h5 class="card-title">XP Earned (7 days)</h5>
+      <canvas id="xpChart"></canvas>
+    </div>
+  </div>
+  <div class="col-md-6">
+    <div class="card p-3">
+      <h5 class="card-title">Achievements Unlocked</h5>
+      <canvas id="achChart"></canvas>
+    </div>
+  </div>
+</div>
+
+<script>
+  // Parse the data from the islands – always works, no injection errors
+  const dauData = JSON.parse(document.getElementById('dau-json').textContent);
+  const modesData = JSON.parse(
+    document.getElementById('modes-json').textContent
+  );
+  const xpData = JSON.parse(document.getElementById('xp-json').textContent);
+  const achData = JSON.parse(document.getElementById('ach-json').textContent);
+
+  // Daily Active Users
+  new Chart(document.getElementById('dauChart'), {
+    type: 'line',
+    data: {
+      labels: dauData.map((d) => d.date),
+      datasets: [
+        {
+          label: 'Active Users',
+          data: dauData.map((d) => d.count),
+          borderColor: 'rgb(75, 192, 192)',
+          backgroundColor: 'rgba(75, 192, 192, 0.2)',
+          tension: 0.2,
+        },
+      ],
+    },
+  });
+
+  // Games per Mode
+  new Chart(document.getElementById('modesChart'), {
+    type: 'doughnut',
+    data: {
+      labels: modesData.map((m) => m.mode),
+      datasets: [
+        {
+          data: modesData.map((m) => m.count),
+          backgroundColor: [
+            '#FF6384',
+            '#36A2EB',
+            '#FFCE56',
+            '#4BC0C0',
+            '#9966FF',
+            '#FF9F40',
+          ],
+        },
+      ],
+    },
+  });
+
+  // XP Earned
+  new Chart(document.getElementById('xpChart'), {
+    type: 'bar',
+    data: {
+      labels: xpData.map((x) => x.date),
+      datasets: [
+        {
+          label: 'XP',
+          data: xpData.map((x) => x.xp),
+          backgroundColor: 'rgba(54, 162, 235, 0.6)',
+        },
+      ],
+    },
+  });
+
+  // Achievements
+  new Chart(document.getElementById('achChart'), {
+    type: 'bar',
+    data: {
+      labels: achData.map((a) => a.achievement),
+      datasets: [
+        {
+          label: 'Unlocked',
+          data: achData.map((a) => a.count),
+          backgroundColor: 'rgba(255, 206, 86, 0.6)',
+        },
+      ],
+    },
+  });
+</script>
+{% endblock %}

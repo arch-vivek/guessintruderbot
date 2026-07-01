@@ -2,6 +2,7 @@ import asyncio, time
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 from core.game_engine import generate_puzzle
+from log import log_game_event , logger
 from services.xp_progression import award_xp, get_user, create_user_if_not_exists
 from utils.rate_limiter import RateLimiter
 
@@ -499,3 +500,5 @@ async def finish_duel(duel_id, context, forfeit_winner=None):
                     await context.bot.send_message(uid, personal, parse_mode="Markdown")
                 except:
                     pass
+        logger.info(f"Duel finished: winner={winner_id} ({p1_correct}-{p2_correct}), delta={delta}")
+        log_game_event("duel_finished", winner_id, f"opponent={loser_id}, score={p1_correct}-{p2_correct}")

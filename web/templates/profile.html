@@ -1,0 +1,33 @@
+{% extends "base.html" %} {% block content %}
+<h2>👤 Your Profile</h2>
+<div class="row justify-content-center mt-4">
+  <div class="col-md-6">
+    <div class="card p-4 text-center">
+      <img
+        src="https://via.placeholder.com/120"
+        class="rounded-circle mx-auto mb-3"
+        style="border: 3px solid var(--gold)"
+      />
+      <h4>{{ user['first_name'] or user['username'] }}</h4>
+      <span class="badge bg-warning text-dark px-3 py-2"
+        >{{ user['rank_tier']|capitalize }}</span
+      >
+      <hr />
+      <div class="row text-start">
+        <div class="col-6"><strong>Level:</strong></div>
+        <div class="col-6">{{ user['level'] }}</div>
+        <div class="col-6"><strong>MMR:</strong></div>
+        <div class="col-6">{{ user['mmr'] }}</div>
+        <div class="col-6"><strong>XP:</strong></div>
+        <div class="col-6">{{ user['xp'] }}</div>
+        <div class="col-6"><strong>Wins:</strong></div>
+        <div class="col-6">{{ user['wins'] }}</div>
+        <div class="col-6"><strong>Losses:</strong></div>
+        <div class="col-6">{{ user['losses'] }}</div>
+        <div class="col-6"><strong>Streak:</strong></div>
+        <div class="col-6">{{ user['streak'] }} 🔥</div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,23 @@
+{% extends "admin/admin_base.html" %} {% block admin_content %}
+<h3>Edit User #{{ user['user_id'] }}</h3>
+<form method="POST" class="mt-4">
+  <div class="mb-3">
+    <label class="form-label">Field to Update</label>
+    <select name="field" class="form-select">
+      <option value="xp">XP</option>
+      <option value="level">Level</option>
+      <option value="mmr">MMR</option>
+      <option value="wins">Wins</option>
+      <option value="losses">Losses</option>
+      <option value="streak">Streak</option>
+      <option value="max_streak">Max Streak</option>
+      <option value="rank_tier">Rank Tier (bronze,silver,gold,etc)</option>
+    </select>
+  </div>
+  <div class="mb-3">
+    <label class="form-label">New Value</label>
+    <input type="text" name="value" class="form-control" required />
+  </div>
+  <button type="submit" class="btn btn-primary">Update</button>
+</form>
+{% endblock %}

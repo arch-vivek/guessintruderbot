@@ -20,3 +20,19 @@ __pycache__/
 Thumbs.db
 
 diagrams/
+
+GuessTheIntruder_Presentation.pptx
+GuessTheIntruder_ProjectReport.docx
+
+.env
+*.db
+venv/
+.venv/
+__pycache__/
+*.pyc
+.vscode/
+.idea/
+logs/
+
+
+logs/

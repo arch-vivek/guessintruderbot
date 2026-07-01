@@ -2,6 +2,7 @@ from datetime import date
 from telegram import Update
 from telegram.ext import ContextTypes
 from services.xp_progression import award_xp
+from log import logger
 
 async def daily_reward_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
@@ -53,3 +54,4 @@ async def daily_reward_command(update: Update, context: ContextTypes.DEFAULT_TYP
         await award_xp(user.id, 100, db, combo=1)
 
     await update.message.reply_text(msg, parse_mode="Markdown")
+    logger.info(f"User {user.id} claimed daily reward, streak={new_streak}")

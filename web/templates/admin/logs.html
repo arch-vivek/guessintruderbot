@@ -1,0 +1,9 @@
+{% extends "admin/admin_base.html" %} {% block admin_content %}
+<h3>Bot Logs (last 200 lines)</h3>
+<pre
+  class="bg-dark text-light p-3 mt-3"
+  style="max-height: 500px; overflow-y: scroll"
+>
+{% for line in lines %}{{ line }}{% endfor %}
+</pre>
+{% endblock %}
